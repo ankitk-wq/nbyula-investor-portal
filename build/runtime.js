@@ -22,8 +22,10 @@
 
   var DIRTY = false;
   var dirtyUnits = Object.create(null);   // unitId -> true
+  var chartDirty = Object.create(null);   // canvasId -> true
   var orderDirty = false;
   var sortable = null;
+  var nestedSortables = [];
   var syncTimer = null;
 
   var $app = document.getElementById("app");
@@ -115,6 +117,7 @@
     }
     if (!s.meta) s.meta = { title: CFG.title || "Investor Portal" };
     if (typeof s.appScript !== "string") s.appScript = "";
+    if (!s.chartData || typeof s.chartData !== "object") s.chartData = {};  // canvasId -> {labels, datasets:[[..],..]}
     if (!s.version) s.version = 3;
     return s;
   }
@@ -136,11 +139,31 @@
     });
   }
   function runAppScript(js) {
-    if (!js) return;
+    if (!js) { requestAnimationFrame(applyChartOverrides); return; }
     destroyCharts();
     requestAnimationFrame(function () {
       try { (new Function(js))(); }
       catch (e) { console.error("[portal] appScript error:", e); }
+      requestAnimationFrame(applyChartOverrides);   // charts now exist -> patch their data
+    });
+  }
+  // Apply stored per-chart data overrides onto the live Chart.js instances.
+  // Styling stays in appScript; only labels + dataset values are overridden.
+  function applyChartOverrides() {
+    if (!window.Chart || !window.Chart.getChart || !state || !state.chartData) return;
+    document.querySelectorAll("canvas").forEach(function (cv) {
+      if (!cv.id) return;
+      var ov = state.chartData[cv.id];
+      if (!ov) return;
+      var ch = window.Chart.getChart(cv);
+      if (!ch) return;
+      if (Array.isArray(ov.labels)) ch.data.labels = ov.labels.slice();
+      if (Array.isArray(ov.datasets)) {
+        ov.datasets.forEach(function (arr, i) {
+          if (ch.data.datasets[i] && Array.isArray(arr)) ch.data.datasets[i].data = arr.slice();
+        });
+      }
+      try { ch.update(); } catch (e) {}
     });
   }
   function renderState(s) {
@@ -191,6 +214,24 @@
     });
     if (isEditable(unitNode)) unitNode.setAttribute("contenteditable", "true");
 
+    // chart "Edit data" button over each canvas
+    unitNode.querySelectorAll("canvas").forEach(function (cv) {
+      if (!cv.id) cv.id = "cv" + Math.random().toString(36).slice(2, 9);
+      var host = cv.parentElement || unitNode;
+      host.classList.add("eh-chart-host");
+      if (!host.querySelector(":scope > .eh-chart-edit")) {
+        var b = el("button", { "class": "eh-chart-edit", title: "Edit chart data" }, "📊 Edit data");
+        b.addEventListener("click", function (ev) {
+          ev.stopPropagation(); ev.preventDefault();
+          openChartEditor(cv.id, id);
+        });
+        host.appendChild(b);
+      }
+    });
+
+    // drag-to-reorder elements WITHIN this unit (card grids, lists, metric rows)
+    initNestedSortables(unitNode, id);
+
     if (!isSection) return;  // only sections get drag/resize/hide chrome
 
     // control chip (drag + hide)
@@ -215,6 +256,8 @@
   }
 
   function decorateEditing() {
+    nestedSortables.forEach(function (s) { try { s.destroy(); } catch (e) {} });
+    nestedSortables = [];
     Array.prototype.forEach.call($app.children, function (n) {
       if (n.nodeType === 1) decorateUnit(n);
     });
@@ -261,6 +304,218 @@
   }
 
   /* ------------------------------------------------------------------ */
+  /*  intra-section drag: reorder cards/list-items inside a section      */
+  /* ------------------------------------------------------------------ */
+  function initNestedSortables(unitNode, sectionId) {
+    if (!window.Sortable) return;
+    var candidates = [];
+    unitNode.querySelectorAll("*").forEach(function (c) {
+      if (c === unitNode) return;
+      if (c.matches(".eh-ctl,.eh-resize,.eh-bar,.eh-grip,.eh-chart-edit")) return;
+      if (c.closest(".eh-ctl,.eh-resize")) return;
+      if (c.querySelector("canvas")) return;          // don't reorder chart wrappers
+      var kids = Array.prototype.filter.call(c.children, function (k) {
+        return k.nodeType === 1 && !k.matches(".eh-ctl,.eh-resize,.eh-grip,.eh-chart-edit");
+      });
+      if (kids.length < 2) return;
+      // dominant tag must repeat (card grid / list), not a mixed text block
+      var tags = {}, top = 0;
+      kids.forEach(function (k) { tags[k.tagName] = (tags[k.tagName] || 0) + 1; if (tags[k.tagName] > top) top = tags[k.tagName]; });
+      if (top < 2) return;
+      // children must be "card-like": list/table rows, or compound blocks with their own children
+      var cardish = kids.every(function (k) {
+        return k.tagName === "LI" || k.tagName === "TR" || k.children.length >= 1;
+      });
+      if (!cardish) return;
+      candidates.push({ el: c, kids: kids });
+    });
+    // keep only innermost containers (a parent that contains another candidate is skipped)
+    var keep = candidates.filter(function (ci) {
+      return !candidates.some(function (cj) { return cj.el !== ci.el && ci.el.contains(cj.el); });
+    });
+    keep.forEach(function (ci) {
+      ci.kids.forEach(function (k) {
+        k.classList.add("eh-has-grip");
+        if (!k.querySelector(":scope > .eh-grip")) {
+          k.appendChild(el("button", { "class": "eh-grip", title: "Drag to reorder" }, "⠿"));
+        }
+      });
+      try {
+        nestedSortables.push(window.Sortable.create(ci.el, {
+          handle: ".eh-grip", animation: 140,
+          ghostClass: "eh-ghost", chosenClass: "eh-chosen",
+          onEnd: function () { markUnitDirty(sectionId); }
+        }));
+      } catch (e) {}
+    });
+  }
+
+  /* ------------------------------------------------------------------ */
+  /*  chart data editor (spreadsheet-style + paste from Excel)           */
+  /* ------------------------------------------------------------------ */
+  function readChart(canvasId) {
+    var cv = document.getElementById(canvasId);
+    var ch = cv && window.Chart && window.Chart.getChart ? window.Chart.getChart(cv) : null;
+    if (!ch) return null;
+    return {
+      labels: (ch.data.labels || []).map(function (x) { return x; }),
+      datasets: (ch.data.datasets || []).map(function (d) {
+        return { label: d.label || "", data: (d.data || []).map(function (v) { return v; }) };
+      })
+    };
+  }
+  function closeModal() { var m = document.querySelector(".eh-modal-ov"); if (m) m.remove(); }
+  function openChartEditor(canvasId, sectionId) {
+    var cur = readChart(canvasId);
+    if (!cur) { toast("Chart not ready yet — try again in a moment.", "err"); return; }
+
+    var ov = el("div", { "class": "eh-modal-ov" });
+    var box = el("div", { "class": "eh-modal" });
+    box.innerHTML =
+      '<h3>Edit chart data</h3>' +
+      '<div class="eh-modal-sub">Type values directly, or paste a block copied from Excel/Sheets below. The chart updates when you click Apply.</div>' +
+      '<div class="eh-grid-wrap"><table class="eh-grid"></table></div>' +
+      '<div class="eh-hint-sm" style="margin-bottom:8px">Paste from Excel — first row = labels, each next row = one dataset’s values (dataset names are kept):</div>' +
+      '<textarea class="eh-paste" placeholder="Jul&#9;Aug&#9;Sep\n143&#9;2509&#9;882\n143&#9;321&#9;882"></textarea>' +
+      '<div class="eh-modal-row"><button class="eh-mbtn" id="eh-fill">Fill grid from paste</button></div>' +
+      '<div class="eh-modal-actions">' +
+        '<button class="eh-mbtn" id="eh-cancel">Cancel</button>' +
+        '<button class="eh-mbtn primary" id="eh-apply">Apply to chart</button>' +
+      '</div>';
+    ov.appendChild(box);
+    document.body.appendChild(ov);
+
+    var table = box.querySelector("table.eh-grid");
+    function renderGrid(model) {
+      var html = "<tr><td class='eh-rowlbl'>Label →</td>";
+      model.labels.forEach(function (lb, i) {
+        html += "<td><input class='eh-lbl-in' data-col='" + i + "' value='" + String(lb).replace(/'/g, "&#39;") + "'></td>";
+      });
+      html += "</tr>";
+      model.datasets.forEach(function (ds, r) {
+        html += "<tr><td class='eh-rowlbl'>" + (ds.label || ("Series " + (r + 1))) + "</td>";
+        model.labels.forEach(function (_, c) {
+          var v = ds.data[c]; if (v == null) v = "";
+          html += "<td><input data-row='" + r + "' data-col='" + c + "' value='" + String(v).replace(/'/g, "&#39;") + "'></td>";
+        });
+        html += "</tr>";
+      });
+      table.innerHTML = html;
+    }
+    function gridToModel() {
+      var labels = [];
+      table.querySelectorAll("input.eh-lbl-in").forEach(function (inp) { labels[+inp.dataset.col] = inp.value; });
+      var datasets = cur.datasets.map(function (ds) { return { label: ds.label, data: [] }; });
+      table.querySelectorAll("input[data-row]").forEach(function (inp) {
+        var r = +inp.dataset.row, c = +inp.dataset.col;
+        var raw = inp.value.trim().replace(/[, ]/g, "");
+        var num = raw === "" ? null : Number(raw);
+        datasets[r].data[c] = (raw !== "" && isFinite(num)) ? num : inp.value;
+      });
+      return { labels: labels, datasets: datasets };
+    }
+    renderGrid(cur);
+
+    box.querySelector("#eh-fill").addEventListener("click", function () {
+      var txt = box.querySelector(".eh-paste").value.replace(/\r/g, "");
+      if (!txt.trim()) return;
+      var rows = txt.split("\n").filter(function (l) { return l.trim() !== ""; })
+                    .map(function (l) { return l.split("\t"); });
+      if (!rows.length) return;
+      var model = { labels: rows[0].slice(), datasets: [] };
+      var body = rows.slice(1);
+      cur.datasets.forEach(function (ds, i) {
+        var src = body[i] || [];
+        // if the first cell of the row is non-numeric, treat it as a name and drop it
+        if (src.length === model.labels.length + 1 && isNaN(Number(src[0].replace(/[, ]/g, "")))) src = src.slice(1);
+        var data = model.labels.map(function (_, c) {
+          var raw = (src[c] || "").trim().replace(/[, ]/g, "");
+          var n = raw === "" ? null : Number(raw);
+          return (raw !== "" && isFinite(n)) ? n : (src[c] || "");
+        });
+        model.datasets.push({ label: ds.label, data: data });
+      });
+      cur = model; renderGrid(model);
+      toast("Grid filled from paste — review, then Apply.", "info");
+    });
+    box.querySelector("#eh-cancel").addEventListener("click", closeModal);
+    ov.addEventListener("click", function (e) { if (e.target === ov) closeModal(); });
+    box.querySelector("#eh-apply").addEventListener("click", function () {
+      var model = gridToModel();
+      state.chartData = state.chartData || {};
+      state.chartData[canvasId] = { labels: model.labels, datasets: model.datasets.map(function (d) { return d.data; }) };
+      chartDirty[canvasId] = true;
+      applyChartOverrides();
+      markUnitDirty(sectionId);
+      closeModal();
+      toast("Chart updated — click Save changes to publish.", "ok");
+    });
+  }
+
+  /* ------------------------------------------------------------------ */
+  /*  text formatting toolbar (color / bold / italic) — Google-Docs-ish  */
+  /* ------------------------------------------------------------------ */
+  var SWATCHES = ["#0a0a08", "#5F2EEA", "#1a60e8", "#12a05c", "#d97706", "#d93b3b", "#7c3aed", "#0891b2", "#6b6b68", "#ffffff"];
+  function initFormatBar() {
+    if (document.querySelector(".eh-fmt")) return;
+    var bar = el("div", { "class": "eh-fmt" });
+    var html = '<button data-cmd="bold" title="Bold" style="font-weight:800">B</button>' +
+               '<button data-cmd="italic" title="Italic" style="font-style:italic">I</button>' +
+               '<button data-cmd="underline" title="Underline" style="text-decoration:underline">U</button>' +
+               '<span class="eh-fmt-sep"></span>';
+    SWATCHES.forEach(function (c) { html += '<button class="eh-sw" data-color="' + c + '" title="' + c + '" style="background:' + c + '"></button>'; });
+    html += '<label title="Custom colour"><input type="color" id="eh-fmt-color" value="#5F2EEA"></label>' +
+            '<span class="eh-fmt-sep"></span>' +
+            '<button data-cmd="removeFormat" title="Clear formatting">⌫</button>';
+    bar.innerHTML = html;
+    document.body.appendChild(bar);
+
+    // prevent the toolbar from stealing the selection
+    bar.addEventListener("mousedown", function (e) { e.preventDefault(); });
+
+    function activeUnit() {
+      var sel = window.getSelection();
+      if (!sel || !sel.rangeCount) return null;
+      var node = sel.anchorNode;
+      if (node && node.nodeType === 3) node = node.parentElement;
+      var ce = node && node.closest ? node.closest('[contenteditable="true"]') : null;
+      if (!ce) return null;
+      var unit = node.closest("[data-eh-unit]");
+      return unit ? unit.getAttribute("data-eh-unit") : null;
+    }
+    function applyCmd(cmd, val) {
+      var uid = activeUnit();
+      try { document.execCommand("styleWithCSS", false, true); } catch (e) {}
+      document.execCommand(cmd, false, val || null);
+      if (uid) markUnitDirty(uid);
+    }
+    bar.querySelectorAll("button[data-cmd]").forEach(function (b) {
+      b.addEventListener("click", function () { applyCmd(b.getAttribute("data-cmd")); });
+    });
+    bar.querySelectorAll("button[data-color]").forEach(function (b) {
+      b.addEventListener("click", function () { applyCmd("foreColor", b.getAttribute("data-color")); });
+    });
+    bar.querySelector("#eh-fmt-color").addEventListener("input", function (e) { applyCmd("foreColor", e.target.value); });
+
+    function place() {
+      if (MODE !== "editor") return;
+      var sel = window.getSelection();
+      if (!sel || sel.isCollapsed || !sel.rangeCount) { bar.classList.remove("show"); return; }
+      if (!activeUnit()) { bar.classList.remove("show"); return; }
+      var rect = sel.getRangeAt(0).getBoundingClientRect();
+      if (!rect || (!rect.width && !rect.height)) { bar.classList.remove("show"); return; }
+      bar.classList.add("show");
+      var top = rect.top + window.scrollY - bar.offsetHeight - 8;
+      if (top < window.scrollY + 4) top = rect.bottom + window.scrollY + 8;
+      var left = rect.left + window.scrollX + rect.width / 2 - bar.offsetWidth / 2;
+      left = Math.max(8, Math.min(left, window.scrollX + document.documentElement.clientWidth - bar.offsetWidth - 8));
+      bar.style.top = top + "px"; bar.style.left = left + "px";
+    }
+    document.addEventListener("selectionchange", place);
+    window.addEventListener("scroll", function () { if (bar.classList.contains("show")) place(); }, true);
+  }
+
+  /* ------------------------------------------------------------------ */
   /*  dirty tracking                                                     */
   /* ------------------------------------------------------------------ */
   function markUnitDirty(id) { if (id) dirtyUnits[id] = true; setDirty(true); }
@@ -275,8 +530,10 @@
   /* ------------------------------------------------------------------ */
   function serializeUnit(unitNode) {
     var clone = unitNode.cloneNode(true);
-    clone.querySelectorAll(".eh-ctl,.eh-resize").forEach(function (n) { n.remove(); });
+    clone.querySelectorAll(".eh-ctl,.eh-resize,.eh-grip,.eh-chart-edit").forEach(function (n) { n.remove(); });
     clone.querySelectorAll("[contenteditable]").forEach(function (n) { n.removeAttribute("contenteditable"); });
+    clone.querySelectorAll(".eh-has-grip").forEach(function (n) { n.classList.remove("eh-has-grip"); if (!n.getAttribute("class")) n.removeAttribute("class"); });
+    clone.querySelectorAll(".eh-chart-host").forEach(function (n) { n.classList.remove("eh-chart-host"); if (!n.getAttribute("class")) n.removeAttribute("class"); });
     clone.classList.remove("eh-chosen", "eh-ghost", "eh-drag-over");
     return clone.outerHTML;
   }
@@ -333,9 +590,14 @@
         var have = {}; merged.order.forEach(function (i) { have[i] = 1; });
         currentOrder().forEach(function (i) { if (!have[i]) merged.order.push(i); });
       }
-      // keep appScript + meta from whoever has them (charts unchanged here)
+      // keep appScript + meta from whoever has them (chart STYLING lives here)
       merged.appScript = remote.appScript || state.appScript || "";
       merged.meta = state.meta || merged.meta;
+      // chart DATA overrides: start from remote, my edited charts win
+      merged.chartData = (remote.chartData && typeof remote.chartData === "object") ? remote.chartData : {};
+      Object.keys(chartDirty).forEach(function (cid) {
+        if (state.chartData && state.chartData[cid]) merged.chartData[cid] = state.chartData[cid];
+      });
       merged.version = 3;
       merged.updatedAt = nowIso();
       merged.updatedBy = myName;
@@ -348,7 +610,7 @@
       // adopt merged as truth; reflect other editors' non-conflicting changes
       applyRemoteUnits(merged, {});      // dirty already merged in, safe to apply all
       state = merged;
-      dirtyUnits = Object.create(null); orderDirty = false; setDirty(false);
+      dirtyUnits = Object.create(null); chartDirty = Object.create(null); orderDirty = false; setDirty(false);
       lastSeenUpdatedAt = merged.updatedAt;
       toast("Saved ✓  (published, live in ~30s)", "ok");
     } catch (e) {
@@ -364,6 +626,14 @@
   function applyRemoteUnits(remote, skip) {
     remote = normalize(remote);
     var needFull = false;
+
+    // adopt remote chart-data overrides for charts I'm not actively editing
+    state = state || {}; state.chartData = state.chartData || {};
+    if (remote.chartData) {
+      Object.keys(remote.chartData).forEach(function (cid) {
+        if (!chartDirty[cid]) state.chartData[cid] = remote.chartData[cid];
+      });
+    }
 
     // patch / insert
     remote.order.forEach(function (id) {
@@ -396,6 +666,7 @@
       }
     } else {
       initSortable();
+      applyChartOverrides();   // reflect collaborator's chart-data edits without a full re-render
     }
   }
 
@@ -444,6 +715,7 @@
     try { await loadScript("https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"); } catch (e) {}
     renderState(remoteState);
     buildToolbar();
+    initFormatBar();
     setConn("ok", "editor — live");
     startEditorSync();
     // delegated input listener => mark the edited section dirty
@@ -484,7 +756,7 @@
       sessionStorage.removeItem("ipf-token"); location.reload();
     });
     document.getElementById("eh-help").addEventListener("click", function () {
-      alert("EDITING\n\n• Click any text to edit it inline.\n• Hover a section: drag the ☰ handle to reorder, click 👁 to hide/show, drag the bottom-right corner to resize.\n• Click “Save changes” to publish. Your collaborator sees your saved changes within ~5 seconds.\n• You can both edit different sections at the same time safely. If you edit the SAME section, the last save wins.");
+      alert("EDITING\n\n• Click any text to edit it inline. Select text to get a floating toolbar for COLOUR, bold, italic & underline.\n• Hover a section: drag the ☰ handle to reorder sections, click 👁 to hide/show, drag the bottom-right corner to resize.\n• Hover a card / list item: drag its ⠿ grip to reorder elements WITHIN a section.\n• Hover a chart: click “📊 Edit data” to change the numbers (type them, or paste a block from Excel). The chart updates live.\n• Click “Save changes” to publish. Your collaborator sees your saved changes within ~5 seconds.\n• You can both edit different sections at the same time safely. If you edit the SAME section, the last save wins.");
     });
   }
 
@@ -526,6 +798,7 @@
     try { await loadScript("https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"); } catch (e) {}
     renderState(seed);
     buildToolbar();
+    initFormatBar();
     var b = document.getElementById("eh-save");
     if (b) b.textContent = "Demo — edits not saved";
     setConn("warn", "DEMO (local only)");

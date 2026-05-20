@@ -124,6 +124,67 @@ body.portal-viewer section.eh-hidden{ display:none !important; }
 .eh-ghost{opacity:.35}
 .eh-chosen{box-shadow:0 18px 50px rgba(0,0,0,.18)}
 
+/* ---- intra-section element drag grips ---- */
+body.portal-editor .eh-has-grip{ position:relative; }
+.eh-grip{
+  position:absolute;top:4px;left:4px;z-index:40;display:none;
+  width:22px;height:22px;border-radius:6px;border:1px solid #d0d0cc;background:#fff;
+  color:#0a0a08;cursor:grab;font-size:12px;line-height:1;align-items:center;justify-content:center;
+  box-shadow:0 2px 6px rgba(0,0,0,.14);padding:0;
+}
+.eh-grip:active{cursor:grabbing}
+body.portal-editor .eh-has-grip:hover > .eh-grip{display:flex}
+.eh-grip:hover{background:#0a0a08;color:#fff;border-color:#0a0a08}
+
+/* ---- chart "Edit data" button ---- */
+body.portal-editor .eh-chart-host{ position:relative; }
+.eh-chart-edit{
+  position:absolute;top:8px;left:8px;z-index:55;display:none;
+  border:1px solid #5F2EEA;background:#5F2EEA;color:#fff;font:700 11px 'Hanken Grotesk',system-ui,sans-serif;
+  padding:5px 10px;border-radius:7px;cursor:pointer;box-shadow:0 2px 10px rgba(95,46,234,.35);
+}
+.eh-chart-edit:hover{background:#4a1fd0}
+body.portal-editor .eh-chart-host:hover > .eh-chart-edit{display:block}
+
+/* ---- floating text-format toolbar (color / bold / italic) ---- */
+.eh-fmt{
+  position:absolute;z-index:99990;display:none;align-items:center;gap:5px;
+  padding:6px 8px;background:#0a1422;border:1px solid #22344f;border-radius:10px;
+  box-shadow:0 10px 30px rgba(0,0,0,.4);font-family:system-ui,sans-serif;
+}
+.eh-fmt.show{display:flex}
+.eh-fmt button{
+  width:28px;height:28px;border-radius:6px;border:1px solid #2c425f;background:#0f1a2e;color:#dbe6f5;
+  font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;
+}
+.eh-fmt button:hover{border-color:#5F2EEA;color:#fff}
+.eh-fmt .eh-sw{width:20px;height:20px;border-radius:50%;border:2px solid #fff2;cursor:pointer;padding:0}
+.eh-fmt .eh-sw:hover{transform:scale(1.12)}
+.eh-fmt .eh-fmt-sep{width:1px;height:22px;background:#22344f;margin:0 2px}
+.eh-fmt input[type=color]{width:28px;height:28px;border:1px solid #2c425f;border-radius:6px;background:#0f1a2e;cursor:pointer;padding:2px}
+.eh-fmt label{position:relative;display:inline-flex}
+
+/* ---- chart data editor modal ---- */
+.eh-modal-ov{position:fixed;inset:0;z-index:99995;background:rgba(6,12,22,.6);display:flex;align-items:center;justify-content:center;font-family:'Hanken Grotesk',system-ui,sans-serif}
+.eh-modal{width:min(880px,94vw);max-height:88vh;overflow:auto;background:#fff;color:#0a0a08;border-radius:14px;box-shadow:0 30px 80px rgba(0,0,0,.5);padding:22px 24px}
+.eh-modal h3{margin:0 0 4px;font-size:18px;font-weight:800}
+.eh-modal .eh-modal-sub{color:#6b6b68;font-size:13px;margin-bottom:16px}
+.eh-grid-wrap{overflow:auto;border:1px solid #e5e5e2;border-radius:10px;margin-bottom:14px}
+table.eh-grid{border-collapse:collapse;width:100%;font-size:13px}
+table.eh-grid th,table.eh-grid td{border:1px solid #ececea;padding:0}
+table.eh-grid .eh-rowlbl{background:#faf9f7;font-weight:700;padding:6px 10px;white-space:nowrap;color:#3a3a38}
+table.eh-grid input{width:100%;min-width:74px;border:0;padding:7px 8px;font:inherit;background:transparent;outline:none}
+table.eh-grid input:focus{background:#eef2ff;box-shadow:inset 0 0 0 2px #5F2EEA}
+table.eh-grid input.eh-lbl-in{font-weight:700;background:#f7f7f5}
+.eh-paste{width:100%;min-height:80px;border:1px solid #e5e5e2;border-radius:9px;padding:9px 11px;font:12px ui-monospace,Menlo,monospace;resize:vertical}
+.eh-modal-row{display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
+.eh-modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:6px}
+.eh-mbtn{border:1px solid #d0d0cc;background:#fff;color:#0a0a08;font:600 13px 'Hanken Grotesk',sans-serif;padding:9px 16px;border-radius:9px;cursor:pointer}
+.eh-mbtn:hover{border-color:#0a0a08}
+.eh-mbtn.primary{background:#5F2EEA;border-color:#5F2EEA;color:#fff}
+.eh-mbtn.primary:hover{background:#4a1fd0}
+.eh-hint-sm{font-size:12px;color:#6b6b68;line-height:1.5}
+
 /* toast */
 .eh-toast-wrap{position:fixed;left:50%;bottom:64px;transform:translateX(-50%);z-index:9500;display:flex;flex-direction:column;gap:8px;align-items:center}
 .eh-toast{
