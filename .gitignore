@@ -1,0 +1,31 @@
+# OS junk
+.DS_Store
+**/.DS_Store
+Thumbs.db
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*~
+
+# Python
+__pycache__/
+**/__pycache__/
+*.pyc
+
+# Secrets — NEVER commit
+publish/.publish-password
+publish/.worker-config
+
+# PLAINTEXT CONTENT — never commit (this is the whole point of the encryption).
+# These hold the real financials in the clear. They live only on your laptop.
+# Only docs/ (the shell + the ENCRYPTED snapshot) is safe to publish, which is
+# why this repo can be PUBLIC without leaking anything.
+src/
+build/seed.json
+build/seed.from-live.json
+build/preview.html
+
+# Logs
+*.log

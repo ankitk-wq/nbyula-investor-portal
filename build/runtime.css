@@ -1,0 +1,134 @@
+/* ============================================================= *
+ *  Investor Portal — editor runtime styles
+ *  (injected into the public shell by build.py)
+ * ============================================================= */
+
+/* While locked / loading, hide the (empty) app and show nothing sensitive. */
+body.portal-locked #app { visibility: hidden; }
+#app { min-height: 60vh; }
+
+/* ---- Password gate overlay ---- */
+.pg-overlay{
+  position:fixed; inset:0; z-index:99999;
+  background:radial-gradient(120% 120% at 50% 0%, #15233c 0%, #0a1422 60%, #060c16 100%);
+  display:flex; align-items:center; justify-content:center;
+  font-family:'Hanken Grotesk',system-ui,sans-serif; color:#fff;
+}
+.pg-card{
+  width:min(380px,92vw); background:#0f1a2e;
+  border:1px solid #22344f; border-radius:16px; padding:30px 30px 26px;
+  box-shadow:0 30px 80px rgba(0,0,0,.55);
+}
+.pg-brand{display:flex;align-items:center;gap:9px;margin-bottom:18px}
+.pg-dot{width:9px;height:9px;border-radius:50%;background:#1a60e8;box-shadow:0 0 12px #1a60e8}
+.pg-brand b{font-size:15px;font-weight:800;letter-spacing:-.01em}
+.pg-title{font-size:19px;font-weight:700;margin-bottom:6px}
+.pg-sub{font-size:13px;color:#8fa3c0;line-height:1.5;margin-bottom:18px}
+.pg-input{
+  width:100%;padding:12px 14px;border:1px solid #2c425f;
+  border-radius:10px;background:#0a1422;color:#fff;font-size:14px;outline:none;
+  transition:border-color .15s;
+}
+.pg-input:focus{border-color:#1a60e8}
+.pg-btn{
+  margin-top:14px;width:100%;padding:12px 14px;border:0;border-radius:10px;
+  background:linear-gradient(135deg,#1a60e8,#06b6d4);color:#fff;font-size:14px;
+  font-weight:700;cursor:pointer;transition:opacity .15s,transform .15s;
+}
+.pg-btn:hover{opacity:.9;transform:translateY(-1px)}
+.pg-btn:disabled{opacity:.6;cursor:default;transform:none}
+.pg-err{color:#ff8b8b;font-size:12.5px;margin-top:12px;min-height:1em}
+.pg-hint{color:#5f738f;font-size:11px;margin-top:14px;text-align:center;line-height:1.5}
+
+/* ---- Top editor toolbar (only in editor mode) ---- */
+.eh-bar{
+  position:fixed;left:0;right:0;bottom:0;z-index:9000;
+  display:none;align-items:center;gap:12px;
+  padding:9px 16px;background:rgba(10,16,26,.96);
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  border-top:1px solid #22344f;color:#dbe6f5;
+  font-family:'Hanken Grotesk',system-ui,sans-serif;font-size:13px;
+}
+body.portal-editor .eh-bar{display:flex}
+.eh-bar .eh-badge{
+  background:#14B8A6;color:#04201b;font-size:10px;font-weight:800;letter-spacing:.06em;
+  padding:4px 9px;border-radius:5px;
+}
+.eh-bar .eh-spacer{flex:1}
+.eh-bar .eh-name{color:#8fa3c0}
+.eh-bar .eh-name b{color:#fff}
+.eh-btn{
+  border:1px solid #2c425f;background:#0f1a2e;color:#dbe6f5;font-size:12.5px;font-weight:600;
+  padding:7px 13px;border-radius:8px;cursor:pointer;transition:all .12s;
+}
+.eh-btn:hover{border-color:#3b5a82;color:#fff}
+.eh-btn.primary{background:#5F2EEA;border-color:#5F2EEA;color:#fff}
+.eh-btn.primary.dirty{background:#EF4444;border-color:#EF4444}
+.eh-btn.primary:disabled{opacity:.6;cursor:default}
+.eh-conn{display:flex;align-items:center;gap:6px;font-size:11.5px;color:#8fa3c0}
+.eh-conn i{width:8px;height:8px;border-radius:50%;background:#9aa;display:inline-block}
+.eh-conn.ok i{background:#34d399} .eh-conn.warn i{background:#fbbf24} .eh-conn.err i{background:#f87171}
+
+/* ---- Section editing affordances ---- */
+body.portal-editor [data-eh-unit]{ position:relative; }
+body.portal-editor section[data-eh-unit]{
+  outline:1px dashed transparent; transition:outline-color .15s;
+}
+body.portal-editor section[data-eh-unit]:hover{ outline-color:rgba(26,96,232,.4); }
+body.portal-editor section[data-eh-unit].eh-drag-over{ outline:2px dashed #1a60e8; }
+
+/* per-section control chip (drag / hide) top-right */
+.eh-ctl{
+  position:absolute;top:8px;right:8px;z-index:50;display:none;gap:6px;
+}
+body.portal-editor section[data-eh-unit]:hover > .eh-ctl{display:flex}
+.eh-ctl button{
+  width:30px;height:30px;border-radius:8px;border:1px solid #d0d0cc;background:#fff;
+  color:#0a0a08;cursor:pointer;font-size:14px;line-height:1;display:flex;
+  align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.12);
+  transition:all .12s;
+}
+.eh-ctl button:hover{background:#0a0a08;color:#fff;border-color:#0a0a08}
+.eh-ctl .eh-handle{cursor:grab}
+.eh-ctl .eh-handle:active{cursor:grabbing}
+
+/* resize handle, bottom-right of section */
+.eh-resize{
+  position:absolute;right:4px;bottom:4px;width:18px;height:18px;z-index:50;
+  display:none;cursor:nwse-resize;
+  background:
+    linear-gradient(135deg,transparent 50%,#1a60e8 50%,#1a60e8 60%,transparent 60%,transparent 72%,#1a60e8 72%,#1a60e8 82%,transparent 82%);
+  border-radius:3px;opacity:.7;
+}
+body.portal-editor section[data-eh-unit]:hover > .eh-resize{display:block}
+
+/* contenteditable focus ring */
+body.portal-editor [contenteditable="true"]:hover{
+  box-shadow:inset 0 0 0 1px rgba(26,96,232,.25);border-radius:3px;
+}
+body.portal-editor [contenteditable="true"]:focus{
+  outline:2px solid #1a60e8;outline-offset:2px;border-radius:3px;background:rgba(26,96,232,.04);
+}
+
+/* hidden sections: greyed in editor, removed entirely for viewers */
+section.eh-hidden{ opacity:.4; filter:grayscale(.8); position:relative; }
+section.eh-hidden::after{
+  content:"HIDDEN — click the eye to show";
+  position:absolute;top:10px;left:50%;transform:translateX(-50%);
+  background:#0a0a08;color:#fff;font:600 11px 'Hanken Grotesk',sans-serif;
+  padding:4px 10px;border-radius:6px;z-index:60;
+}
+body.portal-viewer section.eh-hidden{ display:none !important; }
+
+/* SortableJS ghost */
+.eh-ghost{opacity:.35}
+.eh-chosen{box-shadow:0 18px 50px rgba(0,0,0,.18)}
+
+/* toast */
+.eh-toast-wrap{position:fixed;left:50%;bottom:64px;transform:translateX(-50%);z-index:9500;display:flex;flex-direction:column;gap:8px;align-items:center}
+.eh-toast{
+  font:600 13px 'Hanken Grotesk',sans-serif;color:#fff;padding:10px 16px;border-radius:9px;
+  box-shadow:0 8px 28px rgba(0,0,0,.28);animation:ehFade .25s ease;
+}
+.eh-toast.ok{background:#12a05c} .eh-toast.err{background:#d93b3b} .eh-toast.info{background:#1a60e8}
+@keyframes ehFade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
