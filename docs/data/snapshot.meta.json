@@ -1,5 +1,6 @@
 {
-  "publishedAt": "2026-05-20T12:39:28Z",
-  "snapshotSha256Prefix": "5ebb42a7e0ad",
-  "snapshotBytes": 283308
+  "publishedAt": "2026-05-20T12:50:51Z",
+  "snapshotSha256Prefix": "39560c3f1517",
+  "snapshotBytes": 551084,
+  "via": "cloudflare-worker"
 }
